@@ -1,0 +1,1034 @@
+---
+title: "Supplement: Neural representations of ambiguous affective stimuli and resilience to anxiety in emerging adults"
+author: "Saragosa-Harris, N.M., et al."
+date: "October 2022"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 4
+header-includes:
+    - \usepackage{caption}
+    - \usepackage[singlelinecheck=false]{caption}
+---
+\captionsetup[table]{labelformat=empty}
+
+
+---
+
+```{r settings, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r read_data, include=FALSE}
+library(plyr)
+library(psych)
+library(dplyr)
+library(glue)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(kableExtra) # For formatting tables.
+library(reshape2)
+library(gtsummary) # also for summary tables.
+library(patchwork)
+library(ggeffects)
+library(qwraps2)
+library(broom) # for using "tidy" function.
+library(broom.mixed)  # for using "tidy" function for lme4 models.
+library(forcats) # For reversing levels of factors.
+
+options(qwraps2_markup = "markdown")
+options(scipen=1, digits=2)
+
+datadirectory <- '' # put path to repository/data_new_IDs_anonymized here.
+data <- read.csv(glue('{datadirectory}/behavior_rsa_conditionlevel_shortdata.csv'),stringsAsFactors = TRUE) # Read in data.
+
+fullsample_questionnairedata <- read.csv(glue('{datadirectory}/fullsample_questionnairedata.csv'),stringsAsFactors = TRUE) # Read in data.
+
+fullsample_long_questionnairedata <- read.csv(glue('{datadirectory}/fullsample_long_questionnairedata.csv'), header = TRUE)
+
+lss_data <- read.csv(glue('{datadirectory}/longdata_facestask_LSS_RSA_behavior.csv'),header = TRUE, stringsAsFactors = TRUE)
+lss_data <- lss_data[!is.na(lss_data$response),] # Only keep trials in which they made a response.
+
+actor_image_details <- read.csv(glue('{datadirectory}/actor_image_details_ctstask_radiate_sona.csv'), header = TRUE)
+
+timepoint_data <- read.csv(glue('{datadirectory}/quarantine_timepoint_data.csv'), header = TRUE)
+timepoint_data$quarantine_onset_factor <- as.factor(timepoint_data$quarantine_onset_factor)
+
+```
+
+```{r plot_themes, include=FALSE}
+#Theme for plots.
+nsh_theme <- theme(#text = element_text(family = "Avenir"), # Doesn't work with PDF I think.
+                   title = element_text(size=14, vjust=2, face="bold"),
+                   plot.subtitle = element_text(size=12,color="gray40", face="bold.italic"),
+                   axis.title.x= element_text(size=12, vjust=-0.3),
+                   axis.title.y= element_text(size=12, vjust=1.5),
+                   axis.text.x= element_text(size=12, colour="black"),
+                   axis.text.y= element_text(size=12, colour="black"),
+                   strip.text = element_text(size=12, face="bold"),
+                   panel.background = element_blank(),
+                   axis.line = element_line(colour = "black"))
+
+# General color for plots with anxiety as the outcome: "#8AAB98".
+# Color dictionary for box plots with different comparison types.
+condition_comparison_colors <- c("threatening/ambiguous" = "#C5776C", # rust.
+                "nonthreatening/ambiguous" = "#A09CB0", # purple.
+                "threatening/nonthreatening" = "#EBCC2A") # yellow.
+
+```
+
+```{r define_table_functions, include=FALSE}
+
+# Define functions to get the coefficients, statistics, confidence intervals, from 
+# different types of regression models and print them in a formatted table.
+
+# Pass in a linear model, a list of labels for the coefficients, and dependent variable name.
+print_regression_table <- function(lm_model,model.terms.labels,dv){
+  model_df <- lm_model %>% tidy(conf.int=TRUE,effects="fixed") %>% mutate(p.value = scales::pvalue(p.value),
+                                                                          conf.high = round(conf.high,digits=2),
+                                                                          conf.low = round(conf.low,digits=2)) # Format model information as a dataframe.
+  df <- lm_model$df.residual # Manually get degrees of freedom (no degrees of freedom when use tidy() with a lm model).
+  model_df$CI <- glue('[{model_df$conf.low}, {model_df$conf.high}]')
+  
+  # Order columns.
+  model_df <- model_df %>% select("term","estimate","std.error","CI","statistic","p.value")
+  model_df <- model_df %>% mutate(term = model.terms.labels)
+  colnames(model_df) <- c("variable","estimate", "SE", "CI",glue("t({df})"), "p")
+
+  kable(model_df,
+        escape = FALSE,
+        format="latex",
+        caption = glue("Dependent variable: {dv}"),
+        align = "l",
+        booktabs = TRUE,
+        longtable = TRUE,
+        linesep = "")  %>%
+        row_spec(0,bold=TRUE) %>% 
+        kableExtra::kable_styling(
+        position = "left",
+        latex_options = c("striped", "repeat_header"),
+        stripe_color = "gray!15") %>%
+  kable_styling(position = "left")
+      
+}
+
+# Do a different function for multilevel linear models since the output is slightly different (e.g., includes degrees of freedom for each coefficient).
+# Pass in a multilevel model, a list of labels for the coefficients, and dependent variable name.
+print_multilevel_table <- function(mlm_model,model.terms.labels,dv){
+  model_df <- mlm_model %>% broom.mixed::tidy(conf.int=TRUE,effects="fixed") %>% mutate(p.value = scales::pvalue(p.value),
+                                                                                        df = round(df, digits= 10),
+                                                                                        conf.high = round(conf.high,digits=2),
+                                                                                        conf.low = round(conf.low,digits=2)) # Format model information as a dataframe.
+  model_df$CI <- glue('[{model_df$conf.low}, {model_df$conf.high}]')
+  
+  # Order columns.
+  model_df <- model_df %>% select("term","estimate","std.error","CI","statistic","df","p.value")
+  model_df <- model_df %>% mutate(term = model.terms.labels)
+  colnames(model_df) <- c("variable","estimate", "SE", "CI","t", "df","p")
+
+  kable(model_df,
+        format="latex",
+        escape = FALSE,
+        caption = glue("Fixed effects from multilevel model\\\\Dependent variable: {dv}"),
+        align = "l",
+        booktabs = TRUE,
+        longtable = TRUE,
+        linesep = "")  %>%
+        row_spec(0,bold=TRUE) %>% 
+        kableExtra::kable_styling(
+        position = "left",
+        latex_options = c("striped", "repeat_header"),
+        stripe_color = "gray!15") %>%
+  kable_styling(position = "left")
+      
+}
+
+
+# Do a different function for multilevel logistic models since the output is slightly different and the estimates are logit and odds ratios.
+# Pass in a multilevel logistic model, a list of labels for the coefficients, and region name.
+print_multilevel_logistic_table <- function(mlm_log_model,model.terms.labels,region){
+    # Note: using exponentiate = TRUE to make logit value an odds ratio instead.
+  model_df <- mlm_log_model %>% broom.mixed::tidy(conf.int=TRUE,exponentiate = TRUE, effects="fixed") %>% mutate(p.value = scales::pvalue(p.value),
+                                                                                                             conf.high = round(conf.high,digits=2),
+                                                                                                             conf.low = round(conf.low,digits=2))# Format model information as a dataframe.
+  model_df$CI <- glue('[{model_df$conf.low}, {model_df$conf.high}]')
+  
+  # Order columns.
+  model_df <- model_df %>% select("term","estimate","std.error","CI","statistic","p.value")
+  model_df <- model_df %>% mutate(term = model.terms.labels)
+  colnames(model_df) <- c("variable","odds ratio", "SE", "CI","z","p") # Note: odds ratio instead of estimate, statistic is a z value.
+
+  kable(model_df,
+        escape = FALSE,
+        format="latex",
+        caption = glue("Fixed effects from multilevel logistic model\\\\ Region: {region}\\\\Dependent variable: Likelihood positive categorization"), # Should print "right amygdala" or "left amygdala".
+        align = "l",
+        booktabs = TRUE,
+        longtable = TRUE,
+        linesep = "")  %>%
+        row_spec(0,bold=TRUE) %>% 
+        kableExtra::kable_styling(
+        position = "left",
+        latex_options = c("striped", "repeat_header"),
+        stripe_color = "gray!15") %>%
+  kable_styling(position = "left")
+      
+}
+
+
+```
+\newpage
+# Sample information.
+## *Supplemental Table 1a: Sample demographics and summary statistics for questionnaire data.*
+```{r sample_information,include=FALSE, warning = FALSE}
+
+summary_data <- fullsample_questionnairedata %>% select(Age, Sex, race_combined,Hispanic, Percent_Surprised_Negative, anxiety_total_T1,mstat_total_score)
+
+```
+
+```{r sample_information_table,echo=FALSE, warning = FALSE, results = 'asis'}
+
+sample_information_table <- summary_data %>%
+                           tbl_summary(label = c(Percent_Surprised_Negative ~ "Negativity bias",
+                                       anxiety_total_T1 ~ "Baseline anxiety",
+                                       mstat_total_score ~ "Self-reported ambiguity tolerance",
+                                       race_combined ~ "Race",
+                                       Hispanic ~ "Ethnicity"),
+                                       missing= "no")  %>%
+                                        add_n() %>%
+                                          modify_header(label ~ "**Variable**") %>%
+                                            modify_header(update = stat_0 ~ " ") %>% # Removethe "N = 101" from the table, print individual N values for each variable instead.
+                                              bold_labels()
+
+sample_information_table %>% as_hux_table()
+
+```
+\newpage
+## *Supplemental Table 1b: Number of complete observations (participants) at each timepoint.*
+```{r number_longitudinal_observations_table,echo=FALSE, warning = FALSE, results = 'asis'}
+
+timepoint_summary_table <- timepoint_data %>% summarise(T1 = sum(as.numeric(!is.na(date_standard_T1))),
+                                                        T2 = sum(as.numeric(!is.na(date_standard_T2))),
+                                                        T3 = sum(as.numeric(!is.na(date_standard_T3))),
+                                                        T4 = sum(as.numeric(!is.na(date_standard_T4))),
+                                                        T5 = sum(as.numeric(!is.na(date_standard_T5))))
+  kable(timepoint_summary_table,
+        escape = FALSE,
+        caption = glue("Number of anxiety observations at each timepoint"),
+        align = "l",
+        booktabs = TRUE,
+        longtable = TRUE,
+        linesep = "")  %>%
+        row_spec(0,bold=TRUE) %>% 
+        kableExtra::kable_styling(
+        position = "left",
+        latex_options = c("striped", "repeat_header"),
+        stripe_color = "gray!15")
+
+```
+
+
+# Longitudinal anxiety scores.
+## *Supplemental Table 2: Growth curve model of anxiety scores over time.*
+```{r longitudinal_anxiety_analysis, include=FALSE, warning = FALSE}
+# Use participant_month (months) instead of participant_specific_timepoint (days) because otherwise model does not converge (values are too large).
+
+# Does the addition of random slopes to the model significantly improve model fit?
+# likelihood ratio test with mixture chi-square (chibar) distribution needed for testing if variances = 0.
+# test random slope vs. random intercept models.
+# requires refitting models using FIML estimation.
+# unload lmerTest package or bug in varTestnlme causes an error.
+detach(package:lmerTest)
+library(varTestnlme)
+modelone.fiml <- lmer(anxiety_total ~ participant_month + (1 + participant_month | Participant_ID), data = fullsample_long_questionnairedata, REML=FALSE)
+#summary(modelone.fiml)
+randomintercept.fiml <- lmer(anxiety_total ~ participant_month + (1 | Participant_ID), data = fullsample_long_questionnairedata, REML=FALSE)
+#summary(randomintercept.fiml)
+varCompTest(modelone.fiml, randomintercept.fiml, pval.comp = "bounds")
+
+# The likelihood ratio test is significant (LRT = 28, p < 0.001), indicating that we can reject the null hypothesis that the models with and without the random slope show the same degree of fit for the data. Therefore, we can conclude that the random slope model is a better fit for the data than the random intercept model that does not include random slopes. That is, including the random slopes (i.e., allowing the effect of time on anxiety to vary between participants) improves the fit of the model relative to a simpler model that includes random intercepts but no random slopes (i.e., the effect of time on anxiety is fixed across all participants).
+
+
+library(lmerTest)
+modelone_month <-  lmer(anxiety_total ~ participant_month + (1 +  participant_month | Participant_ID), data = fullsample_long_questionnairedata, REML = TRUE)
+#summary(modelone_month)
+#confint(modelone_month)
+# No fixed effect of time.
+# beta = -0.01, 95% CI [-0.47,0.45], t(80.67)= -0.03, p = 0.97.
+
+# Get participant-specific slopes.
+anxiety_slopes <- coef(modelone_month)$Participant_ID
+anxiety_slopes$Participant_ID <- rownames(anxiety_slopes)
+rownames(anxiety_slopes) <- 1:nrow(anxiety_slopes)
+anxiety_slopes <- plyr::rename(anxiety_slopes, c("participant_month" = "participant_month_slope",
+                                                 "(Intercept)" = "participant_intercept"))
+# Add these slopes to the data.
+data <- merge(data,anxiety_slopes,by = "Participant_ID")
+
+
+# Control for  time of quarantine onset relative to a participant’s timeline (a between-subjects factor, corresponding to whether the quarantine began between their T1 and T2 timepoints, or between their T2 and T3 timepoints, etc.).
+modelone_month_control_quarantine_timepoint <-  lmer(anxiety_total ~ participant_month +  quarantine_onset_factor + (1 +  participant_month | Participant_ID), data = fullsample_long_questionnairedata, REML = TRUE) # No convergence error here.
+#summary(modelone_month_control_quarantine_timepoint)
+#confint(modelone_month_control_quarantine_timepoint)
+# No fixed effect of time.
+# beta = 0.001, 95% CI [-0.46,0.46], t(80.57) =  0.01, p = 0.995.
+
+```
+
+```{r longitudinal_anxiety_table, echo=FALSE, warning = FALSE}
+print_multilevel_table(modelone_month,
+                        c("Intercept", "Time (months)"),
+                       "Anxiety score")
+```
+
+## *Supplemental Table 3: Growth curve model of anxiety scores over time, controlling for quarantine onset.*
+```{r longitudinal_anxiety_control_table, echo=FALSE, warning = FALSE}
+
+print_multilevel_table(modelone_month_control_quarantine_timepoint,
+                        c("Intercept", "Time (months)",
+                          "Quarantine onset between T1 and T2",
+                          "Quarantine onset between T2 and T3",
+                          "Quarantine onset between T3 and T4",
+                          "Quarantine onset between T4 and T5"),
+                       "Anxiety score")
+```
+
+```{r anxiety_variations_within_participant,include=FALSE, warning = FALSE}
+# What is the range of within-person variation (standard deviations) in anxiety scores across the timepoints?
+anxiety_variations <- fullsample_long_questionnairedata %>%
+  group_by(Participant_ID) %>%
+  summarise(variation_anxiety = sd(anxiety_total, na.rm=TRUE))
+
+#mean(anxiety_variations$variation_anxiety, na.rm = TRUE) # 6.1
+#range(anxiety_variations$variation_anxiety, na.rm = TRUE) # 1.5 to 16.8.
+
+#Across participants and timepoints, SCAARED scores ranged from 0 to 85 overall. Within participants, anxiety scores appeared to be relatively stable, with an average within-person standard deviation in scores of 6.1 (range = 1.5 to 16.8).
+#mean(fullsample_long_questionnairedata$anxiety_total, na.rm = TRUE)
+#range(fullsample_long_questionnairedata$anxiety_total, na.rm = TRUE)
+
+```
+
+# Self-reported ambiguity tolerance and anxiety.
+## *Supplemental Table 4: Self-reported ambiguity tolerance and baseline anxiety.*
+```{r anxiety_mstat,echo=FALSE, include=FALSE}
+anxiety_mstat_t1 <- lm(scale(anxiety_total_T1) ~ scale(mstat_total_score), data = fullsample_questionnairedata)
+#summary(anxiety_mstat_t1)
+#confint(anxiety_mstat_t1, 'scale(mstat_total_score)', level=0.95)
+# mstat estimate = -0.32, 95% CI [-0.51, -0.13], t(99) = -3.35, p < 0.01.
+
+```
+
+```{r anxiety_mstat_table,echo=FALSE}
+print_regression_table(anxiety_mstat_t1,
+                        c("Intercept", "MSTAT score (z)"),
+                       "Baseline anxiety score (z)")
+```
+
+## *Supplemental Table 5: Self-reported ambiguity tolerance and longitudinal anxiety.*
+```{r anxiety_mstat_longitudinal,echo=FALSE, include=FALSE}
+
+# Do longitudinal changes in anxiety (i.e., the relation between time and anxiety) differ as a function of self-reported ambiguity tolerance?
+interaction_mstat_longitudinal_anxiety <- lmer(anxiety_total ~ participant_month +  mstat_total_score_z + (participant_month*mstat_total_score_z) + (1 + participant_month | Participant_ID), data = fullsample_long_questionnairedata)
+#summary(interaction_mstat_longitudinal_anxiety, ddf = "Kenward-Roger") # Fixed effect of MSTAT but no interaction.
+#confint(interaction_mstat_longitudinal_anxiety)
+# interaction beta = 0.2, 95% CI [-0.25,0.64], t(86.75) =  0.88, p =  0.38.
+# mstat beta = -5.05, 95% CI [-8.12, -1.98], t(98.63) = -3.22, p < 0.01.
+```
+
+```{r anxiety_mstat_longitudinal_table, echo=FALSE, warning = FALSE}
+print_multilevel_table(interaction_mstat_longitudinal_anxiety,
+                        c("Intercept","MSTAT score (z)","Time (months)","Time x MSTAT score (z)"), # The order is not the same as they are entered in the model or how it is printed in #summary(); I think it is alphabethical?
+                       "Anxiety score")
+
+```
+
+# Self-reported ambiguity tolerance and behavior in post-scan task.
+## *Supplemental Table 6: Self-reported ambiguity tolerance and negativity biases.*
+```{r mstat_negativity_bias,include=FALSE}
+mstat_percent_surprised_negative <- lm(Percent_Surprised_Negative_Z ~ mstat_total_score_z, data = data)
+#summary(mstat_percent_surprised_negative)
+#confint(mstat_percent_surprised_negative, 'mstat_total_score_z', level=0.95)
+# MSTAT estimate = 0.14, 95% CI [ -0.18   0.46], t(39) = 0.91, p = 0.37.
+
+```
+
+```{r mstat_negativity_table,echo=FALSE, warning=FALSE}
+print_regression_table(mstat_percent_surprised_negative,
+                        c("Intercept", "MSTAT score (z)"),
+                       "Negativity bias (z)")
+
+```
+
+# Anxiety and behavior in post-scan task.
+## *Supplemental Table 7: Negativity biases and baseline anxiety scores.*
+```{r anxiety_negativity_bias,include=FALSE,warning=FALSE}
+anxiety_percent_surprised_negative <- lm(Percent_Surprised_Negative_Z ~ scale(anxiety_total_T1), data = data)
+#summary(anxiety_percent_surprised_negative)
+
+```
+
+```{r anxiety_negativity_bias_table,echo=FALSE,warning=FALSE}
+print_regression_table(anxiety_percent_surprised_negative,
+                        c("Intercept", "Baseline anxiety (z)"),
+                       "Negativity bias (z)")
+```
+
+## *Supplemental Table 8: Negativity biases and longitudinal anxiety scores.*
+```{r anxiety_negativity_bias_longitudinal,include=FALSE}
+anxiety_negativity_bias_longitudinal <- lmer(anxiety_total ~ participant_month +  Percent_Surprised_Negative_Z + (participant_month*Percent_Surprised_Negative_Z) + (1 + participant_month | Participant_ID), data = fullsample_long_questionnairedata)
+#summary(anxiety_negativity_bias_longitudinal, ddf = "Kenward-Roger") 
+#confint(anxiety_negativity_bias_longitudinal)
+# No fixed effect of time or negativity biases. No interaction between time and negativity biases.
+# interaction beta = 0.72, 95% CI [-0.02, 1.46], t(36.61) =  1.91, p =  0.06.
+```
+
+```{r anxiety_negativity_bias_longitudinal_table,echo=FALSE}
+
+print_multilevel_table(anxiety_negativity_bias_longitudinal,
+                        c("Intercept","Time (months)","Time x Negativity bias","Negativity bias (z)"), # The order is not the same as they are entered in the model or how it is printed in #summary(); I think it is alphabethical?
+                       "Anxiety score")
+```
+
+## *Supplemental Table 9: Baseline anxiety and average reaction time to ambiguous stimuli.*
+```{r anxiety_reactiontime,include=FALSE}
+anxiety_reactiontime_surprised <- lm(surprised_rt_average_z ~ Anxiety_Total_T1_Z, data = data)
+#summary(anxiety_reactiontime_surprised)
+```
+
+```{r anxiety_reactiontime_table,echo=FALSE}
+print_regression_table(anxiety_reactiontime_surprised,
+                        c("Intercept", "Baseline anxiety (z)"),
+                       "Average RT to surprised images in post-scan task")
+
+```
+
+# Condition-level analyses: Representational similarity (RS) and baseline anxiety.
+```{r anxiety_rsa_amygdala,include=FALSE}
+
+## Right amygdala. ##
+ 
+# Angry/surprised.
+right_amygdala_anxiety_angrysurprised <- lm(Anxiety_Total_T1_Z ~ AO_SUR_average_amy_R_Thr50_fisher_z, data = data)
+#summary(right_amygdala_anxiety_angrysurprised)
+
+
+# Happy/surprised.
+right_amygdala_anxiety_happysurprised <- lm(Anxiety_Total_T1_Z ~ HO_SUR_average_amy_R_Thr50_fisher_z, data = data)
+#summary(right_amygdala_anxiety_happysurprised)
+
+
+# Angry/happy.
+right_amygdala_anxiety_angryhappy <- lm(Anxiety_Total_T1_Z ~ AO_HO_average_amy_R_Thr50_fisher_z, data = data)
+#summary(right_amygdala_anxiety_angryhappy)
+
+## Left amygdala. ##
+
+# Angry/Surprised.
+left_amygdala_anxiety_angrysurprised <- lm(Anxiety_Total_T1_Z ~ AO_SUR_average_amy_L_Thr50_fisher_z, data = data)
+#summary(left_amygdala_anxiety_angrysurprised)
+
+# Happy/surprised.
+left_amygdala_anxiety_happysurprised <- lm(Anxiety_Total_T1_Z ~ HO_SUR_average_amy_L_Thr50_fisher_z, data = data)
+#summary(left_amygdala_anxiety_happysurprised)
+#confint(left_amygdala_anxiety_happysurprised, 'HO_SUR_average_amy_L_Thr50_fisher_z', level=0.95)
+# estimate = -4.030; 95% CI[-7.8, -0.3]; t(39) = -2.18; p = 0.035.
+
+# Does the observed association hold when we control for participant-specific ROI size?
+left_amygdala_anxiety_happysurprised_controlvoxels <- lm(Anxiety_Total_T1_Z ~ HO_SUR_average_amy_L_Thr50_fisher_z + number_voxels_amy_L_Thr50_average, data = data)
+#summary(left_amygdala_anxiety_happysurprised_controlvoxels)
+#confint(left_amygdala_anxiety_happysurprised_controlvoxels, 'HO_SUR_average_amy_L_Thr50_fisher_z', level=0.95)
+# estimate = -4.02; 95% CI[-7.8, -0.24]; t(38) =-2.16; p = 0.038.
+
+# Angry/happy.
+left_amygdala_anxiety_angryhappy <- lm(Anxiety_Total_T1_Z ~AO_HO_average_amy_L_Thr50_fisher_z , data = data)
+#summary(left_amygdala_anxiety_angryhappy)
+
+```
+
+## *Supplemental Table 10: Ambiguous/threatening RS and baseline anxiety.*
+### Right amygdala.
+```{r anxiety_rsa_table_ambiguousthreatening_amygdala_right,echo=FALSE}
+print_regression_table(right_amygdala_anxiety_angrysurprised,
+                        c("Intercept", "Ambiguous/threatening RS (Fisher z score)"),
+                       "Baseline anxiety score (z)")
+```
+
+### Left amygdala.
+```{r anxiety_rsa_table_ambiguousthreatening_amygdala_left,echo=FALSE}
+print_regression_table(left_amygdala_anxiety_angrysurprised,
+                        c("Intercept", "Ambiguous/threatening RS (Fisher z score)"),
+                       "Baseline anxiety score (z)")
+```
+
+## *Supplemental Table 11: Ambiguous/nonthreatening RS and baseline anxiety.*
+### Right amygdala.
+```{r anxiety_rsa_table_ambiguousnonthreatening_right,echo=FALSE}
+print_regression_table(right_amygdala_anxiety_happysurprised,
+                        c("Intercept", "Ambiguous/nonthreatening RS (Fisher z score)"),
+                       "Baseline anxiety score (z)")
+
+```
+
+### Left amygdala.
+```{r anxiety_rsa_table_ambiguousnonthreatening_left,echo=FALSE}
+print_regression_table(left_amygdala_anxiety_happysurprised,
+                        c("Intercept", "Ambiguous/nonthreatening RS (Fisher z score)"),
+                       "Baseline anxiety score (z)")
+```
+
+### Left amygdala: Sensitivity analysis (Control voxels).
+```{r anxiety_rsa_table_ambiguousnonthreatening_left_controlvoxels,echo=FALSE}
+print_regression_table(left_amygdala_anxiety_happysurprised_controlvoxels,
+                        c("Intercept", "Ambiguous/nonthreatening RS (Fisher z score)","Left amygdala size"),
+                       "Baseline anxiety score (z)")
+
+```
+
+## *Supplemental Table 12: Threatening/nonthreatening RS and baseline anxiety.*
+### Right amygdala.
+```{r anxiety_rsa_table_threateningnonthreatening_right,echo=FALSE}
+
+print_regression_table(right_amygdala_anxiety_angryhappy,
+                        c("Intercept", "Threatening/nonthreatening RS (Fisher z score)"),
+                       "Baseline anxiety score (z)")
+
+```
+
+### Left amygdala.
+```{r anxiety_rsa_table_threateningnonthreatening_left,echo=FALSE}
+
+print_regression_table(left_amygdala_anxiety_angryhappy,
+                        c("Intercept", "Threatening/nonthreatening RS (Fisher z score)"),
+                       "Baseline anxiety score (z)")
+```
+
+# Condition-level analyses: Representational similarity (RS) and longitudinal anxiety.
+```{r anxiety_rsa_amygdala_longitudinal,include=FALSE}
+
+## Right amygdala. ##
+ anxiety_negativity_bias_longitudinal <- lmer(anxiety_total ~ participant_month +  Percent_Surprised_Negative_Z + (participant_month*Percent_Surprised_Negative_Z) + (1 + participant_month | Participant_ID), data = fullsample_long_questionnairedata)
+
+# Angry/surprised.
+right_amygdala_anxiety_angrysurprised_longitudinal <- lmer(anxiety_total ~ AO_SUR_average_amy_R_Thr50_fisher_z + participant_month +
+                                                         (participant_month*AO_SUR_average_amy_R_Thr50_fisher_z) + (1 + participant_month | Participant_ID),
+                                                         data = fullsample_long_questionnairedata)
+#summary(right_amygdala_anxiety_angrysurprised_longitudinal)
+
+# Happy/surprised.
+right_amygdala_anxiety_happysurprised_longitudinal <- lmer(anxiety_total ~ HO_SUR_average_amy_R_Thr50_fisher_z  + participant_month +
+                                                         (participant_month*HO_SUR_average_amy_R_Thr50_fisher_z) + (1 + participant_month | Participant_ID),
+                                                         data = fullsample_long_questionnairedata)
+#summary(right_amygdala_anxiety_happysurprised_longitudinal)
+
+# Angry/happy.
+right_amygdala_anxiety_angryhappy_longitudinal <- lmer(anxiety_total ~ AO_HO_average_amy_R_Thr50_fisher_z + participant_month +
+                                                         (participant_month*AO_HO_average_amy_R_Thr50_fisher_z) + (1 + participant_month | Participant_ID),
+                                                         data = fullsample_long_questionnairedata)
+summary(right_amygdala_anxiety_angryhappy_longitudinal)
+
+## Left amygdala. ##
+
+# Angry/surprised.
+left_amygdala_anxiety_angrysurprised_longitudinal <- lmer(anxiety_total ~ AO_SUR_average_amy_L_Thr50_fisher_z + participant_month +
+                                                         (participant_month*AO_SUR_average_amy_L_Thr50_fisher_z) + (1 + participant_month | Participant_ID),
+                                                         data = fullsample_long_questionnairedata)
+#summary(left_amygdala_anxiety_angrysurprised_longitudinal)
+
+# Happy/surprised.
+left_amygdala_anxiety_happysurprised_longitudinal <- lmer(anxiety_total ~ HO_SUR_average_amy_L_Thr50_fisher_z  + participant_month +
+                                                         (participant_month*HO_SUR_average_amy_L_Thr50_fisher_z) + (1 + participant_month | Participant_ID),
+                                                         data = fullsample_long_questionnairedata)
+#summary(left_amygdala_anxiety_happysurprised_longitudinal)
+
+# Angry/happy.
+left_amygdala_anxiety_angryhappy_longitudinal <- lmer(anxiety_total ~ AO_HO_average_amy_L_Thr50_fisher_z + participant_month +
+                                                         (participant_month*AO_HO_average_amy_L_Thr50_fisher_z) + (1 + participant_month | Participant_ID),
+                                                         data = fullsample_long_questionnairedata)
+#summary(left_amygdala_anxiety_angryhappy_longitudinal)
+
+```
+
+## *Supplemental Table 13: Ambiguous/threatening RS and longitudinal anxiety.*
+### Right amygdala.
+```{r rsa_longitudinal_ambiguous_threatening_right,echo=FALSE}
+print_multilevel_table(right_amygdala_anxiety_angrysurprised_longitudinal,
+                        c("Intercept","Ambiguous/threatening RS (fisher z)","Time (months)","Time x Ambiguous/threatening RS"),
+                       "Anxiety score")
+```
+
+### Left amygdala.
+```{r rsa_longitudinal_ambiguous_threatening_left,echo=FALSE}
+print_multilevel_table(left_amygdala_anxiety_angrysurprised_longitudinal,
+                        c("Intercept","Ambiguous/threatening RS (fisher z)","Time (months)","Time x Ambiguous/threatening RS"),
+                       "Anxiety score")
+```
+
+## *Supplemental Table 14: Ambiguous/nonthreatening RS and longitudinal anxiety.*
+### Right amygdala.
+```{r rsa_longitudinal_ambiguous_nonthreatening_right,echo=FALSE}
+print_multilevel_table(right_amygdala_anxiety_happysurprised_longitudinal,
+                        c("Intercept","Ambiguous/nonthreatening RS (fisher z)","Time (months)","Time x Ambiguous/nonthreatening RS"),
+                       "Anxiety score")
+```
+
+### Left amygdala.
+```{r rsa_longitudinal_ambiguous_nonthreatening_left,echo=FALSE}
+print_multilevel_table(left_amygdala_anxiety_happysurprised_longitudinal,
+                        c("Intercept","Ambiguous/nonthreatening RS (fisher z)","Time (months)","Time x Ambiguous/nonthreatening RS"),
+                       "Anxiety score")
+```
+
+## *Supplemental Table 15: Threatening/nonthreatening RS and longitudinal anxiety.*
+### Right amygdala.
+```{r rsa_longitudinal_threatening_nonthreatening_right,echo=FALSE}
+print_multilevel_table(right_amygdala_anxiety_angryhappy_longitudinal,
+                        c("Intercept","Threatening/nonthreatening RS (fisher z)","Time (months)","Time x Threatening/nonthreatening RS"),
+                       "Anxiety score")
+```
+
+### Left amygdala.
+```{r rsa_longitudinal_threatening_nonthreatening_left,echo=FALSE}
+print_multilevel_table(left_amygdala_anxiety_angryhappy_longitudinal,
+                        c("Intercept","Threatening/nonthreatening RS (fisher z)","Time (months)","Time x Threatening/nonthreatening RS"),
+                       "Anxiety score")
+```
+
+# Single-trial (actor-level) analyses: Single trial (actor-level) RS and subsequent appraisals of the actor's ambiguous image.
+```{r single_trial_rsa_predict_choices,include=FALSE}
+
+rsa_surprised_trials <- subset(lss_data,Emotion == "surprised") # Only examine responses to surprised trials.
+
+##### Right amygdala. #####
+
+# Angry/surprised.
+right_amygdala_angry <- glmer(response ~ AO_SUR_fisher_z_amygdala_right + (1 | Participant_ID),
+                              data = rsa_surprised_trials, 
+                              family = binomial(link="logit"),
+                              control = glmerControl(optimizer = "bobyqa"), nAGQ = 0)
+#summary(right_amygdala_angry)
+
+# Happy/surprised.
+right_amygdala_happy <- glmer(response ~ HO_SUR_fisher_z_amygdala_right + (1 | Participant_ID),
+                              data = rsa_surprised_trials, 
+                              family = binomial(link="logit"),
+                              control = glmerControl(optimizer = "bobyqa"), nAGQ = 0)
+#summary(right_amygdala_happy)
+
+# Angry/happy.
+right_amygdala_angry_happy <- glmer(response ~ AO_HO_fisher_z_amygdala_right + (1 | Participant_ID),
+                              data = rsa_surprised_trials, 
+                              family = binomial(link="logit"),
+                              control = glmerControl(optimizer = "bobyqa"), nAGQ = 0)
+#summary(right_amygdala_angry_happy)
+
+
+##### Left amygdala. #####
+# Angry/surprised.
+left_amygdala_angry <- glmer(response ~ AO_SUR_fisher_z_amygdala_left + (1 | Participant_ID),
+                       data = rsa_surprised_trials, 
+                       family = binomial(link="logit"),
+                       control = glmerControl(optimizer = "bobyqa"), nAGQ = 0)
+#summary(left_amygdala_angry)
+
+# Happy/surprised.
+left_amygdala_happy <- glmer(response ~ HO_SUR_fisher_z_amygdala_left + (1 | Participant_ID),
+                             data = rsa_surprised_trials, 
+                             family = binomial(link="logit"),
+                             control = glmerControl(optimizer = "bobyqa"), nAGQ = 0)
+#summary(left_amygdala_happy)
+
+# Angry/happy.
+left_amygdala_angry_happy <- glmer(response ~ AO_HO_fisher_z_amygdala_left + (1 | Participant_ID),
+                             data = rsa_surprised_trials, 
+                             family = binomial(link="logit"),
+                             control = glmerControl(optimizer = "bobyqa"), nAGQ = 0)
+#summary(left_amygdala_angry_happy)
+# beta = 0.92, z = 2.68, p = 0.0074.
+# So the more overlap, the more likely to rate as positive.
+coef(left_amygdala_angry_happy) # Intercepts should vary but beta values should not because only allowed for random intercepts here.
+## odds ratios and 95% CI.
+# Note: Odds ratio should be about 2.7 times the logit value (2.7*0.92 = 2.5).
+
+#library(broom.mixed)
+tidy(left_amygdala_angry_happy,conf.int=TRUE,exponentiate=TRUE,effects="fixed")
+# Odds ratio = 2.52; 95% CI [1.28, 4.94].
+
+# Control for number of voxels.
+left_amygdala_angry_happy_controlvoxels <- glmer(response ~ AO_HO_fisher_z_amygdala_left + 
+                                     number_voxels_amygdala_left_Thr50 + (1 | Participant_ID),
+                                   data = rsa_surprised_trials, 
+                                   family = binomial(link="logit"),
+                                   control = glmerControl(optimizer = "bobyqa"), nAGQ = 0)
+#summary(left_amygdala_angry_happy_controlvoxels)
+tidy(left_amygdala_angry_happy_controlvoxels,conf.int=TRUE,exponentiate=TRUE,effects="fixed")
+# beta = 0.92, Odds ratio = 2.52; 95% CI [1.28, 4.94], z = 2.68, p = 0.0073.
+
+
+```
+
+## *Supplemental Table 16: Actor-level ambiguous/threatening RS and subsequent appraisals of the actor's ambiguous image.*
+### Right amygdala.
+```{r single_trial_rsa_angrysurprised_right,echo=FALSE,warning=FALSE}
+
+print_multilevel_logistic_table(right_amygdala_angry,c("Intercept","Ambiguous/threatening RS (fisher z)"),"Right amygdala")
+
+```
+### Left amygdala.
+```{r single_trial_rsa_angrysurprised_left,echo=FALSE,warning=FALSE}
+
+print_multilevel_logistic_table(left_amygdala_angry,
+                                c("Intercept","Ambiguous/threatening RS (fisher z)"),
+                                  "Left amygdala")
+
+```
+
+## *Supplemental Table 17: Actor-level ambiguous/nonthreatening RS and subsequent appraisals of the actor's ambiguous image.*
+### Right amygdala.
+```{r single_trial_rsa_happysurprised_right,echo=FALSE,warning=FALSE}
+
+print_multilevel_logistic_table(right_amygdala_happy,
+                                c("Intercept","Ambiguous/nonthreatening RS (fisher z)"),
+                                  "Right amygdala")
+
+```
+### Left amygdala.
+```{r single_trial_rsa_happysurprised_left,echo=FALSE,warning=FALSE}
+
+print_multilevel_logistic_table(left_amygdala_happy,
+                                c("Intercept","Ambiguous/nonthreatening RS (fisher z)"),
+                                  "Left amygdala")
+```
+
+## *Supplemental Table 18: Actor-level threatening/nonthreatening RS and subsequent appraisals of the actor's ambiguous image.*
+### Right amygdala.
+```{r single_trial_rsa_angryhappy_right,echo=FALSE,warning=FALSE}
+
+print_multilevel_logistic_table(right_amygdala_angry_happy,
+                                c("Intercept","Threatening/nonthreatening RS (fisher z)"),
+                                  "Right amygdala")
+
+```
+### Left amygdala.
+```{r single_trial_rsa_angryhappy_left,echo=FALSE,warning=FALSE}
+
+print_multilevel_logistic_table(left_amygdala_angry_happy,
+                                c("Intercept","Threatening/nonthreatening RS (fisher z)"),
+                                  "Left amygdala")
+
+
+```
+### Left amygdala: Sensitivity analysis (Control voxels).
+```{r single_trial_rsa_angryhappy_left_controlvoxels,echo=FALSE,warning=FALSE}
+
+print_multilevel_logistic_table(left_amygdala_angry_happy_controlvoxels,
+                                c("Intercept","Threatening/nonthreatening RS (fisher z)", "Left amygdala voxel number"),
+                                  "Left amygdala")
+```
+
+# Supplemental figures.
+## *Supplemental Figure 1a: Visualization of study timepoints.*
+```{r overall_timepoint_plot, echo=FALSE, warning = FALSE}
+
+fullsample_long_questionnairedata$Participant_ID <- as.factor(fullsample_long_questionnairedata$Participant_ID)
+fullsample_long_questionnairedata$questionnaire_date <- as.Date(fullsample_long_questionnairedata$questionnaire_date) 
+fullsample_long_questionnairedata$participantordered <- fct_rev(fullsample_long_questionnairedata$Participant_ID) # Relevel for graph.
+
+
+overall_timepoint_graph <- ggplot(fullsample_long_questionnairedata,aes(x=overall_timepoint,y=participantordered, group = participantordered))+
+  geom_point(size=2) +
+  geom_line(size=.7) + 
+  ylab("\nParticipants") +
+  xlab("Days since beginning of study\n") +
+  scale_x_continuous(breaks = seq(0,300,20)) +
+  theme(plot.title = element_blank(),
+        axis.title.x= element_text(size=15, vjust=-0.3, face="bold"),
+        axis.title.y= element_text(size=15, vjust=1.5, face="bold"),
+        axis.text.x= element_text(size=14, colour="black"),
+        axis.text.y= element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"))
+
+overall_timepoint_graph
+
+```
+
+
+## *Supplemental Figure 1b: Individual anxiety scores over time.*
+```{r longitudinal_anxiety_plot, echo=FALSE, warning = FALSE}
+supplemental_figure_1 <- ggplot(fullsample_long_questionnairedata, aes(x=as.integer(timepoint_number), y=anxiety_total, group=factor(Participant_ID))) + 
+  geom_line() + 
+  guides(colour=FALSE) + 
+  xlab("Time Point") +
+  ylab("Anxiety Total") + aes(colour = factor(Participant_ID)) + ylim(0,80) + 
+  geom_hline(yintercept = 23, size = 2, color = "gray40", linetype = "dotted") +
+  scale_x_continuous(limits = c(1,5),expand = c(0.05, 0.05), minor_breaks = c(1,2,3), n.breaks = 5) +
+  nsh_theme
+
+supplemental_figure_1 
+
+# Do this if want to fit a line to the data.
+# ggplot(fullsample_long_questionnairedata, aes(x=participant_specific_timepoint, y=anxiety_total, group=factor(Participant_ID))) + 
+#   geom_smooth(method = "lm",se = FALSE) +
+#   guides(colour=FALSE) + 
+#   xlab("Participant-Specific Time Point (Days)") +
+#   ylab("Anxiety Total") + aes(colour = factor(Participant_ID)) + ylim(0,80) + 
+#   geom_hline(yintercept = 23, size = 2, color = "gray40", linetype = "dotted") +
+#   nsh_theme
+
+```
+
+## *Supplemental Figure 2: Average RSA values within the right and left amygdala by comparison type.*
+```{r rsa_boxplot,echo=FALSE, warning = FALSE}
+
+figuredata_long <- data[,grepl(glob2rx('Participant_ID|*average_amy*fisher_z'), names(data))] # Only keep these columns for the descriptive statistics table.
+figuredata_long <- melt(figuredata_long,id.vars = 'Participant_ID', value.name = 'fisher_z')
+
+figuredata_long <- figuredata_long %>%
+  mutate(hemisphere =
+           case_when(grepl("_R_",figuredata_long$variable) ~ "right",
+                     grepl("_L_",figuredata_long$variable) ~ "left"),
+         comparison = 
+           case_when(grepl("AO_HO",figuredata_long$variable) ~ "threatening/nonthreatening",
+                     grepl("AO_SUR",figuredata_long$variable) ~ "threatening/ambiguous",
+                     grepl("HO_SUR",figuredata_long$variable) ~ "nonthreatening/ambiguous"))
+
+factor_columns <- names(figuredata_long)[!(names(figuredata_long) %in% 'fisher_z')] # Make every column except fisher_z column a factor.
+figuredata_long[,factor_columns] <- lapply(figuredata_long[,factor_columns], as.factor)
+
+supplemental_boxplot_figure <- ggplot(figuredata_long, aes(fill= comparison, color = comparison, y = fisher_z, x = comparison)) + 
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(shape = 1, size = 2, width = 0.05, color = "black") +
+  scale_y_continuous(breaks = c(0.1,0.3,0.5,0.7,0.9)) +
+  scale_colour_manual(values = condition_comparison_colors,guide = "none") +
+  scale_fill_manual("Condition-level comparison type",values = condition_comparison_colors) +
+  facet_grid(cols = vars(hemisphere)) +
+  labs(title= "Condition-level similarity values by comparison type",
+       subtitle = "Amygdala",
+       y = "\nFisher Z Value",
+       x = "\n") +
+  theme(panel.spacing = unit(2, "lines"),
+        text = element_text(size=8),
+        axis.title.x = element_text(size=10),
+        axis.title.y = element_text(size=8),
+        strip.text = element_text(size=8),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size=8),
+        axis.ticks.x = element_blank(),
+        legend.text = element_text(size=8),
+        #legend.title = element_text(size=8),
+        legend.title = element_blank(), # Since title has this information, can remove the legend title.
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position="bottom") # Move legend to below plot for this graph to give the plot itself more space.
+  
+
+supplemental_boxplot_figure 
+```
+
+## *Supplemental Figure 3: Negativity biases in sample. *
+```{r negativity_biases,echo=FALSE, warning = FALSE}
+negative_interpretations <- data$Percent_Surprised_Negative
+h<-hist(negative_interpretations, breaks=50, col="gray80", xlab="Proportion of Surprised Faces Categorized as Negative (Within Participant)",
+        ylab="Number of Participants",
+        main="Negative Interpretations of Ambiguous Stimuli",
+        xlim=c(0.0,1.0),
+        ylim=c(0,8))
+axis(side=1, at=seq(0.0,1.0, 0.1))
+xfit<-seq(min(negative_interpretations),max(negative_interpretations),length=40)
+yfit<-dnorm(xfit,mean=mean(negative_interpretations),sd=sd(negative_interpretations))
+yfit <- yfit*diff(h$mids[1:2])*length(negative_interpretations)
+lines(xfit, yfit, col="#8AAB98", lwd=4)
+
+```
+
+## *Supplemental Figure 4: Percentage of participants that categorized each actor’s surprised face negatively.*
+```{r actor_percent_negative,echo=FALSE, warning = FALSE}
+actor_surprised_images <- subset(actor_image_details,Emotion == "surprised")
+actor_surprised_images$Actor <- as.factor(actor_surprised_images$Actor)
+
+actor_plots_theme <- theme(#text = element_text(family = "Avenir"),        
+                   title = element_text(size=8, vjust=2, face="bold"),
+                   plot.subtitle = element_text(color="gray40", size=8, face="bold.italic"),
+                   axis.title.x= element_text(size=8, vjust=-0.3),
+                   axis.title.y= element_text(size=8, vjust=1.5),
+                   axis.text.x= element_text(size=4, colour="black", angle = 90, vjust = 0.5, hjust=1), # Rotate x axis labels.
+                   axis.text.y= element_text(size=12, colour="black"),
+                   strip.text = element_text(size=8, face="bold"),
+                   panel.background = element_blank(),
+                   axis.line = element_line(colour = "black"))
+
+# Plot percent of participants categorized each actor’s surprised face as negative.
+actor_percent_negative_ratings_plot <- ggplot(actor_surprised_images,aes(x = reorder(Actor,image_taskbased_percent_negative_ratings), y = image_taskbased_percent_negative_ratings)) + 
+  geom_bar(stat="identity",fill="gray80",alpha=0.5) +
+  scale_y_continuous(limits = c(0.00,1.00),breaks = seq(0,1,0.25)) +
+  actor_plots_theme +
+  labs(title = "Percent negative interpretations for each actor",
+       subtitle = "Surprised trials only",
+       x = "Actor\n",
+       y = "Percent of participants who categorized image negatively")
+
+actor_percent_negative_ratings_plot
+```
+
+## *Supplemental Figure 5: Reaction times to each actor's surprised face.*
+```{r actor_reaction_times,echo=FALSE, warning = FALSE}
+# Plot means and standard deviations of reaction times (on surprised trials) for each actor.
+actor_rt_ratings_plot <- ggplot(actor_surprised_images,aes(x = reorder(Actor,image_taskbased_rt_average), y = image_taskbased_rt_average)) + 
+  geom_bar(stat="identity",fill="gray80",alpha=0.5) +
+  geom_errorbar(aes(ymin=image_taskbased_rt_average - image_taskbased_rt_sd,
+                    ymax=image_taskbased_rt_average + image_taskbased_rt_sd), color= "#8AAB98", width=.2) +
+  actor_plots_theme +
+  labs(title = "Reaction times on surprised trials for each actor",
+       subtitle = "Surprised trials only",
+       x = "Actor\n",
+       y = "Reaction time (seconds)")
+
+actor_rt_ratings_plot
+
+```
+
+## *Supplemental Figure 6: Distribution of RS values by condition comparison type and by actor.*
+```{r actor_rsa_values,echo=FALSE, warning = FALSE}
+actor_rsa_long <- subset(lss_data, Emotion == "surprised") # Only consider surprised images for now (the RSA values repeats three times per participant, once for every actor's trial).
+actor_rsa_long <- actor_rsa_long[,grepl(glob2rx('Actor|*fisher_z_amygdala*'), names(actor_rsa_long))] # Only keep these columns for the descriptive statistics table.
+actor_rsa_long <- actor_rsa_long %>% select(-c(Actor.Emotion))
+
+actor_rsa_summaries <- actor_rsa_long %>% group_by(Actor) %>%
+                    summarise(
+                      mean_AO_SUR_right = mean(AO_SUR_fisher_z_amygdala_right, na.rm = TRUE),
+                      sd_AO_SUR_right = sd(AO_SUR_fisher_z_amygdala_right, na.rm = TRUE),
+                      mean_HO_SUR_right = mean(HO_SUR_fisher_z_amygdala_right, na.rm = TRUE),
+                      sd_HO_SUR_right = sd(HO_SUR_fisher_z_amygdala_right, na.rm = TRUE),
+                      mean_AO_HO_right = mean(AO_HO_fisher_z_amygdala_right, na.rm = TRUE),
+                      sd_AO_HO_right = sd(AO_HO_fisher_z_amygdala_right, na.rm = TRUE),
+                      mean_AO_SUR_left = mean(AO_SUR_fisher_z_amygdala_left, na.rm = TRUE),
+                      sd_AO_SUR_left = sd(AO_SUR_fisher_z_amygdala_left, na.rm = TRUE),
+                      mean_HO_SUR_left = mean(HO_SUR_fisher_z_amygdala_left, na.rm = TRUE),
+                      sd_HO_SUR_left = sd(HO_SUR_fisher_z_amygdala_left, na.rm = TRUE),
+                      mean_AO_HO_left = mean(AO_HO_fisher_z_amygdala_left, na.rm = TRUE),
+                      sd_AO_HO_left = sd(AO_HO_fisher_z_amygdala_left, na.rm = TRUE))
+  
+#nrow(actor_rsa_summaries) # 100, because it includes BM06 (only included in behavioral task).
+actor_rsa_summaries <- subset(actor_rsa_summaries,Actor!="BM06")
+
+## Right amygdala.
+
+# Threatening/ambiguous RSA values.
+right_AO_SUR_plot <- ggplot(actor_rsa_summaries,aes(x = reorder(Actor,mean_AO_SUR_right), y = mean_AO_SUR_right)) + 
+  geom_bar(stat="identity",fill=condition_comparison_colors[["threatening/ambiguous"]]) +
+  geom_errorbar(aes(ymin = mean_AO_SUR_right - sd_AO_SUR_right,
+                    ymax = mean_AO_SUR_right + sd_AO_SUR_right), width=.2) +
+  actor_plots_theme +
+   theme(axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=15),
+        strip.text = element_text(size=15),
+        axis.text.y = element_text(size=15),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title = "\nTrial-level, within-participant RSA values by actor\nThreatening/ambiguous RSA values",
+       subtitle = "Right amygdala",
+       x = "Actor\n",
+       y = "\nRSA values (fisher z)")
+
+right_AO_SUR_plot
+
+# Nonthreatening/ambiguous RSA values.
+right_HO_SUR_plot <- ggplot(actor_rsa_summaries,aes(x = reorder(Actor,mean_HO_SUR_right), y = mean_HO_SUR_right)) + 
+  geom_bar(stat="identity",fill=condition_comparison_colors[["nonthreatening/ambiguous"]]) +
+  geom_errorbar(aes(ymin = mean_HO_SUR_right - sd_HO_SUR_right,
+                    ymax = mean_HO_SUR_right + sd_HO_SUR_right), width=.2) +
+  actor_plots_theme +
+  theme(axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=15),
+        strip.text = element_text(size=15),
+        axis.text.y = element_text(size=15),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title = "\nTrial-level, within-participant RSA values by actor\nNonthreatening/ambiguous RSA values",
+       subtitle = "Right amygdala",
+       x = "Actor\n",
+       y = "\nRSA values (fisher z)")
+
+right_HO_SUR_plot
+
+# Threatening/nonthreatening RSA values.
+right_AO_HO_plot <- ggplot(actor_rsa_summaries,aes(x = reorder(Actor,mean_AO_HO_right), y = mean_AO_HO_right)) + 
+  geom_bar(stat="identity",fill=condition_comparison_colors[["threatening/nonthreatening"]]) +
+  geom_errorbar(aes(ymin = mean_AO_HO_right - sd_AO_HO_right,
+                    ymax = mean_AO_HO_right + sd_AO_HO_right), width=.2) +
+  actor_plots_theme +
+  theme(axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=15),
+        strip.text = element_text(size=15),
+        axis.text.y = element_text(size=15),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title = "\nTrial-level, within-participant RSA values by actor\nThreatening/nonthreatening RSA values",
+       subtitle = "Right amygdala",
+       x = "Actor\n",
+       y = "\nRSA values (fisher z)")
+
+right_AO_HO_plot
+
+## Left amygdala.
+
+# Threatening/ambiguous RSA values.
+left_AO_SUR_plot <- ggplot(actor_rsa_summaries,aes(x = reorder(Actor,mean_AO_SUR_left), y = mean_AO_SUR_left)) + 
+  geom_bar(stat="identity",fill=condition_comparison_colors[["threatening/ambiguous"]]) +
+  geom_errorbar(aes(ymin = mean_AO_SUR_left - sd_AO_SUR_left,
+                    ymax = mean_AO_SUR_left + sd_AO_SUR_left), width=.2) +
+  actor_plots_theme +
+   theme(axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=15),
+        strip.text = element_text(size=15),
+        axis.text.y = element_text(size=15),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+    labs(title = "\nTrial-level, within-participant RSA values by actor\nThreatening/ambiguous RSA values",
+       subtitle = "Left amygdala",
+       x = "Actor\n",
+       y = "\nRSA values (fisher z)")
+ 
+left_AO_SUR_plot
+
+# Nonthreatening/ambiguous RSA values.
+left_HO_SUR_plot <- ggplot(actor_rsa_summaries,aes(x = reorder(Actor,mean_HO_SUR_left), y = mean_HO_SUR_left)) + 
+  geom_bar(stat="identity",fill=condition_comparison_colors[["nonthreatening/ambiguous"]]) +
+  geom_errorbar(aes(ymin = mean_HO_SUR_left - sd_HO_SUR_left,
+                    ymax = mean_HO_SUR_left + sd_HO_SUR_left), width=.2) +
+  actor_plots_theme +
+  theme(axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=15),
+        strip.text = element_text(size=15),
+        axis.text.y = element_text(size=15),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title = "\nTrial-level, within-participant RSA values by actor\nNonthreatening/ambiguous RSA values",
+       subtitle = "Left amygdala",
+       x = "Actor\n",
+       y = "\nRSA values (fisher z)")
+
+left_HO_SUR_plot
+
+# Threatening/nonthreatening RSA values.
+left_AO_HO_plot <- ggplot(actor_rsa_summaries,aes(x = reorder(Actor,mean_AO_HO_left), y = mean_AO_HO_left)) + 
+  geom_bar(stat="identity",fill=condition_comparison_colors[["threatening/nonthreatening"]]) +
+  geom_errorbar(aes(ymin = mean_AO_HO_left - sd_AO_HO_left,
+                    ymax = mean_AO_HO_left + sd_AO_HO_left), width=.2) +
+  actor_plots_theme +
+  theme(axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=15),
+        strip.text = element_text(size=15),
+        axis.text.y = element_text(size=15),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+     labs(title = "\nTrial-level, within-participant RSA values by actor\nThreatening/nonthreatening RSA values",
+       subtitle = "Left amygdala",
+       x = "Actor\n",
+       y = "\nRSA values (fisher z)")
+
+left_AO_HO_plot
+
+```
