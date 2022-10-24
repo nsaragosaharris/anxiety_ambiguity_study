@@ -16,20 +16,13 @@
 library(readr)
 library(dplyr)
 
-#Check if script is being run on a Mac or a PC.
-if(Sys.info()["sysname"]== "Darwin"){
-  work_dir <- "/Volumes/Users/SANDLab"
-}else{
-  work_dir <- "\\\\pythia.psych.ucla.edu/users/SANDLab"
-}
-
-data_path <- paste(work_dir,"/College_transition_study_(CTS)/Tasks/Scan Session/Faces Task/MRI Task/data", sep = "", collapse = NULL)
+data_path <- ' ' # Path to where the  behavioral data for the MRI task (just button presses for attentional control) is saved.
 setwd(data_path)
-# All files in the folder; should be three text files (that start with CTS) for each subject.
-file_list <- intersect(list.files(data_path,pattern = "CTS"), list.files(data_path,pattern = ".csv"))
+# All files in the folder; should be three text files (that start with P_) for each subject.
+file_list <- intersect(list.files(data_path,pattern = "P_"), list.files(data_path,pattern = ".csv"))
 print("Files:")
 print(file_list)
-output_path <- paste(work_dir,"/College_transition_study_(CTS)/Tasks/Scan Session/Onsets/ghost", sep = "", collapse = NULL)
+output_path <- '' # Where to save output files.
 
 subj_list <- substr(file_list,1,6) # ID part of the file names.
 subj_list <- subj_list[!duplicated(subj_list)] # Get unique IDs (instead of listed three times for each person).
