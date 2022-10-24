@@ -20,16 +20,14 @@ require(readr)
 require(dplyr)
 require(tidyverse)
 
-work_dir <- "/Volumes/Users/SANDLab"
-#data_path <- "/Volumes/SANDlab/College_transition_study_(CTS)/Data/Behavioral_data/"
-data_path <- paste(work_dir,"/College_transition_study_(CTS)/Data/Behavioral_data/", sep = "", collapse = NULL) # In this directory, there should be a folder for each participant.
+data_path <- ' ' # Path to where the  behavioral data for the MRI task (just button presses for attentional control) is saved. In this directory, there should be a folder for each participant.
 setwd(data_path)
 #path for those participants that participated in the lab session (all participants).
-data_folders <- Sys.glob(paste(data_path,"CTS*/Scan_session/Raw",sep = "", collapse = NULL)) # Get list of folders in this directory.
+data_folders <- Sys.glob(paste(data_path,"P_*/Scan_session/Raw",sep = "", collapse = NULL)) # Get list of folders in this directory.
 #path for the data for the scan task.
-data_files <- Sys.glob(paste(data_path,"CTS*/Scan_session/Raw/*Run*.csv",sep = "", collapse = NULL))  # Note this is defining "completed task" by "did they do any of the runs of the task"; will check that they did three in next section.
+data_files <- Sys.glob(paste(data_path,"P_*/Scan_session/Raw/*Run*.csv",sep = "", collapse = NULL))  # Note this is defining "completed task" by "did they do any of the runs of the task"; will check that they did three in next section.
 #path for participants that already have onset files created.
-onsets_created <- Sys.glob(paste(data_path,"CTS*/Scan_session/Onsets/nsh_onsets",sep = "", collapse = NULL)) # Check if they have the folder that corresponds to this version of onsets (does not check if they have all 300 onset files, just the folder).
+onsets_created <- Sys.glob(paste(data_path,"P_*/Scan_session/Onsets/nsh_onsets",sep = "", collapse = NULL)) # Check if they have the folder that corresponds to this version of onsets (does not check if they have all 300 onset files, just the folder).
 #create new dataframe that will have all of the participant IDs for people who completed the task.
 subs_compl_task <- rep(NA, length(data_folders))
 #create new dataframe that will have all of the participant IDs for people who already have onset files.
