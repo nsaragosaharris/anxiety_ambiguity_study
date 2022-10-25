@@ -15,21 +15,19 @@ library(filesstrings)
 
 
 # Get paths to single trial onsets for those with imaging data.
-work_dir <- "/Volumes/Users/SANDLab"
-data_path <- paste(work_dir,"/College_transition_study_(CTS)/Data/Behavioral_data/", sep = "", collapse = NULL) # In this directory, there should be a folder for each participant.
+data_path <- '' # Wherever data are saved. In this directory, there should be a folder for each participant.
 setwd(data_path)
-subs = Sys.glob(paste(data_path,"CTS*/Scan_session/Onsets/nsh_onsets",sep = "", collapse = NULL))
+subs = Sys.glob(paste(data_path,"P_*/Scan_session/Onsets/nsh_onsets",sep = "", collapse = NULL))
 
-#subs = Sys.glob(file.path("P:", "College_transition_study_(CTS)", "Data", "Behavioral_data", "CTS*", "Scan_session", "Onsets", "nsh_onsets"))
 
 # This takes a while (about thirty minutes per participant) so I would recommend only doing a small amount at a time.
 for (i in 1:length(subs)) {
   sub = subs[i]  
   
-  onset_files = Sys.glob(sprintf("%s/CTS*_events_nsh.txt", sub))  # Should be 300 of these.
+  onset_files = Sys.glob(sprintf("%s/P_*_events_nsh.txt", sub))  # Should be 300 of these.
 
   temp = strsplit(onset_files, "onsets/")
-  mask = stringr::str_detect(unlist(temp), 'CTS[0-1][0-9][0-9]_Run') # Get all of the file names (without the directory in the title).
+  mask = stringr::str_detect(unlist(temp), 'P_[0-1][0-9][0-9]_Run') # Get all of the file names (without the directory in the title).
   filenames = unlist(temp)[mask]
   
   # First, go into "ghost" folder and copy over the files that have all of the trials organized by emotion type.
@@ -79,8 +77,6 @@ for (i in 1:length(subs)) {
       other_files_onsets = unique(other_files_onsets[,c(1:3)])
       length(other_files_onsets$V1) # Should be 32.
       
-      
-      
      write.table(other_files_onsets, sprintf("%s/%s_%s_%s_events_%s_rr_nsh.txt", sub, subid, run, act_emo,emotion), row.names=FALSE, col.names = FALSE)
       
       
@@ -114,6 +110,6 @@ for (i in 1:length(subs)) {
 for (j in 1:length(subs)) {
   
   sub = subs[j]
-  total_onset_files = Sys.glob(sprintf("%s/CTS*.txt", sub))
+  total_onset_files = Sys.glob(sprintf("%s/P_*.txt", sub))
   print(length(total_onset_files))
 }
