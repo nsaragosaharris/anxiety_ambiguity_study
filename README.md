@@ -8,9 +8,10 @@ This repository contains the data and code (task and analysis) for a study exami
 **Authors: Natalie Saragosa-Harris, João F. Guassi Moreira, Yael H. Waizman, Anna Sedykin, Jennifer A. Silvers+, and Tara S. Peris+
 +Equal author contribution.**
 
-
+*Task.*
 The stimuli for the fMRI task and post-scan behavioral task (code is located in scripts/task) are from the Racially Diverse Affective Expression (RADIATE) face stimulus set (https://www.sciencedirect.com/science/article/pii/S0165178117321893), an open access dataset available in the supplemental materials for the study.
 
+*Representational similairty analysis.*
 The representational similarity analysis scripts (in scripts/rsa_scripts) are written in Python 3 and use nilearn (https://nilearn.github.io/stable/index.html), a Python library.
 
 If you are getting errors about libraries not loading, you probably have not installed the necessary requirements. To do so, type this: pip install -r requirements.txt
